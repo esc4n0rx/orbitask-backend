@@ -47,6 +47,7 @@ const memberRoutes = require('./src/routes/memberRoutes');
 const boardRoutes = require('./src/routes/boardRoutes');
 const taskRoutes = require('./src/routes/taskRoutes');
 const healthRoutes = require('./src/routes/healthRoutes');
+const aiRoutes = require('./src/routes/aiRoutes'); // Nova rota
 
 // Importação dos middlewares
 const errorMiddleware = require('./src/middlewares/errorMiddleware');
@@ -77,6 +78,7 @@ app.use('/api/stations', stationRoutes);
 app.use('/api/stations', memberRoutes);
 app.use('/api', boardRoutes);
 app.use('/api', taskRoutes);
+app.use('/api', aiRoutes); // Nova rota da IA
 
 // Rota para endpoints não encontrados
 app.use('*', (req, res) => {
@@ -128,13 +130,15 @@ const server = app.listen(PORT, () => {
     port: PORT,
     environment: process.env.NODE_ENV || 'development',
     nodeVersion: process.version,
-    pid: process.pid
+    pid: process.pid,
+    aiEnabled: process.env.AI_ENABLED === 'true'
   });
   
   console.log(`🚀 Servidor Orbitask rodando na porta ${PORT}`);
   console.log(`📚 Documentação disponível em http://localhost:${PORT}/api-docs`);
   console.log(`🔍 Health checks em http://localhost:${PORT}/health`);
   console.log(`📊 Métricas em http://localhost:${PORT}/health/metrics`);
+  console.log(`🤖 Orbit AI ${process.env.AI_ENABLED === 'true' ? 'HABILITADA' : 'DESABILITADA'}`);
 });
 
 // Middleware para contar conexões ativas
