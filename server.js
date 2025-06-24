@@ -1,4 +1,3 @@
- 
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -8,6 +7,10 @@ const swaggerSpec = require('./src/docs/swagger');
 
 // Importações das rotas
 const authRoutes = require('./src/routes/authRoutes');
+const stationRoutes = require('./src/routes/stationRoutes');
+const memberRoutes = require('./src/routes/memberRoutes');
+const boardRoutes = require('./src/routes/boardRoutes');
+const taskRoutes = require('./src/routes/taskRoutes');
 
 // Importação dos middlewares
 const errorMiddleware = require('./src/middlewares/errorMiddleware');
@@ -35,6 +38,10 @@ app.get('/health', (req, res) => {
 
 // Rotas da aplicação
 app.use('/api/auth', authRoutes);
+app.use('/api/stations', stationRoutes);
+app.use('/api/stations', memberRoutes);
+app.use('/api', boardRoutes);
+app.use('/api', taskRoutes);
 
 // Rota para endpoints não encontrados
 app.use('*', (req, res) => {
