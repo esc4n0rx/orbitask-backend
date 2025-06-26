@@ -3,17 +3,12 @@ require('dotenv').config();
 // Cara, inicializa o Sentry antes de qualquer coisa se estiver em produção
 if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
   const Sentry = require('@sentry/node');
-  const { ProfilingIntegration } = require('@sentry/profiling-node');
   
-  Sentry.init({
+  // Configuração básica do Sentry
+  const sentryConfig = {
     dsn: process.env.SENTRY_DSN,
-    integrations: [
-      new ProfilingIntegration(),
-    ],
     // Performance Monitoring
     tracesSampleRate: 0.1, // 10% das transações
-    // Profiling
-    profilesSampleRate: 0.1, // 10% dos profiles
     environment: process.env.NODE_ENV,
     beforeSend(event) {
       // Filtra erros que não queremos no Sentry
@@ -25,7 +20,21 @@ if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
       }
       return event;
     }
-  });
+  };
+
+  // Tenta adicionar profiling se disponível
+  try {
+    const { ProfilingIntegration } = require('@sentry/profiling-node');
+    if (ProfilingIntegration) {
+      sentryConfig.integrations = [new ProfilingIntegration()];
+      sentryConfig.profilesSampleRate = 0.1; // 10% dos profiles
+    }
+  } catch (error) {
+    console.warn('Sentry Profiling não disponível:', error.message);
+    // Continua sem profiling
+  }
+  
+  Sentry.init(sentryConfig);
 }
 
 const express = require('express');

@@ -18,8 +18,8 @@
     "author": "",
     "license": "MIT",
     "dependencies": {
-        "@sentry/node": "^9.31.0",
-        "@sentry/profiling-node": "^9.31.0",
+        "@sentry/node": "^8.0.0",
+        "@sentry/profiling-node": "^8.0.0",
         "@supabase/supabase-js": "^2.39.0",
         "bcryptjs": "^2.4.3",
         "cors": "^2.8.5",
