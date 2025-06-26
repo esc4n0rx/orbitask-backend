@@ -49,6 +49,9 @@ const loggingMiddleware = require('./src/middlewares/loggingMiddleware');
 const { metricsMiddleware } = require('./src/middlewares/metricsMiddleware');
 const { logger } = require('./src/utils/logger');
 
+// Importação da nova configuração de CORS
+const { corsOptions, corsDebugMiddleware } = require('./src/middlewares/corsMiddleware');
+
 // Importações das rotas
 const authRoutes = require('./src/routes/authRoutes');
 const stationRoutes = require('./src/routes/stationRoutes');
@@ -56,7 +59,7 @@ const memberRoutes = require('./src/routes/memberRoutes');
 const boardRoutes = require('./src/routes/boardRoutes');
 const taskRoutes = require('./src/routes/taskRoutes');
 const healthRoutes = require('./src/routes/healthRoutes');
-const aiRoutes = require('./src/routes/aiRoutes'); // Nova rota
+const aiRoutes = require('./src/routes/aiRoutes');
 
 // Importação dos middlewares
 const errorMiddleware = require('./src/middlewares/errorMiddleware');
@@ -64,61 +67,62 @@ const errorMiddleware = require('./src/middlewares/errorMiddleware');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuração do CORS
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Lista de origens permitidas
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'https://localhost:3000',
-      'https://localhost:3001',
-      'https://orbitask-frontend.vercel.app'
-    ];
-
-    // Permite requisições sem origin (ex: Postman, apps mobile)
-    if (!origin) return callback(null, true);
-    
-    // Verifica se a origin está na lista permitida
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      // Em desenvolvimento, permite qualquer localhost
-      if (process.env.NODE_ENV !== 'production' && origin.includes('localhost')) {
-        callback(null, true);
-      } else {
-        callback(new Error('Não permitido pelo CORS'));
-      }
-    }
-  },
-  credentials: true, // Permite envio de cookies e headers de autenticação
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: [
-    'Origin',
-    'X-Requested-With',
-    'Content-Type',
-    'Accept',
-    'Authorization',
-    'Cache-Control',
-    'Pragma',
-    'X-Correlation-ID'
-  ],
-  exposedHeaders: ['X-Correlation-ID'],
-  maxAge: 86400 // Cache preflight por 24 horas
-};
-
 // Middlewares de monitoramento (devem vir primeiro)
 app.use(correlationIdMiddleware);
 app.use(metricsMiddleware);
 app.use(loggingMiddleware);
 
-// Middlewares de segurança e configuração
+// Middleware de debug CORS (antes do CORS)
+app.use(corsDebugMiddleware);
+
+// Configuração de segurança HELMET (configurado para funcionar com CORS)
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { 
+    policy: "cross-origin" 
+  },
+  crossOriginOpenerPolicy: {
+    policy: "cross-origin"
+  },
+  crossOriginEmbedderPolicy: false // Desabilita para evitar conflitos com CORS
 }));
+
+// Aplicação da configuração CORS melhorada
 app.use(cors(corsOptions));
+
+// Middlewares de parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Middleware adicional para garantir headers CORS em todas as respostas
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  
+  // Sempre adiciona o Vary header para cache correto
+  res.vary('Origin');
+  
+  // Em desenvolvimento, adiciona headers extras para debug
+  if (process.env.NODE_ENV !== 'production') {
+    res.set('X-Debug-CORS', 'enabled');
+    res.set('X-Debug-Environment', process.env.NODE_ENV);
+  }
+  
+  next();
+});
+
+// Rota de teste para CORS (remover em produção)
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/api/cors-test', (req, res) => {
+    res.json({
+      message: 'CORS está funcionando!',
+      origin: req.get('Origin'),
+      timestamp: new Date().toISOString(),
+      headers: {
+        'access-control-allow-origin': res.get('Access-Control-Allow-Origin'),
+        'access-control-allow-credentials': res.get('Access-Control-Allow-Credentials')
+      }
+    });
+  });
+}
 
 // Documentação Swagger
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
@@ -132,7 +136,7 @@ app.use('/api/stations', stationRoutes);
 app.use('/api/stations', memberRoutes);
 app.use('/api', boardRoutes);
 app.use('/api', taskRoutes);
-app.use('/api', aiRoutes); // Nova rota da IA
+app.use('/api', aiRoutes);
 
 // Rota para endpoints não encontrados
 app.use('*', (req, res) => {
@@ -140,6 +144,7 @@ app.use('*', (req, res) => {
     method: req.method,
     url: req.originalUrl,
     ip: req.ip,
+    origin: req.get('Origin'),
     userAgent: req.get('User-Agent')
   });
   
@@ -147,6 +152,30 @@ app.use('*', (req, res) => {
     error: 'Endpoint não encontrado',
     message: 'A rota solicitada não existe'
   });
+});
+
+// Middleware de tratamento de erros CORS
+app.use((error, req, res, next) => {
+  if (error.message && error.message.includes('CORS')) {
+    logger.error('CORS Error', {
+      error: error.message,
+      origin: req.get('Origin'),
+      method: req.method,
+      url: req.originalUrl,
+      userAgent: req.get('User-Agent')
+    });
+    
+    return res.status(403).json({
+      error: 'CORS Error',
+      message: 'Origem não permitida',
+      details: process.env.NODE_ENV !== 'production' ? {
+        origin: req.get('Origin'),
+        allowedOrigins: require('./src/middlewares/corsMiddleware').getAllowedOrigins()
+      } : undefined
+    });
+  }
+  
+  next(error);
 });
 
 // Middleware de tratamento de erros (deve ser o último)
@@ -157,6 +186,7 @@ app.listen(PORT, () => {
   logger.info('Server Started', {
     port: PORT,
     environment: process.env.NODE_ENV || 'development',
+    allowedOrigins: require('./src/middlewares/corsMiddleware').getAllowedOrigins(),
     timestamp: new Date().toISOString()
   });
 });
