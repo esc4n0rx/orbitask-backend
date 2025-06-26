@@ -75,15 +75,52 @@ app.use(loggingMiddleware);
 // Middleware de debug CORS (antes do CORS)
 app.use(corsDebugMiddleware);
 
-// Configuração de segurança HELMET (configurado para funcionar com CORS)
+// Configuração de segurança HELMET (corrigida para evitar erros)
 app.use(helmet({
+  // Política de recursos cross-origin
   crossOriginResourcePolicy: { 
     policy: "cross-origin" 
   },
-  crossOriginOpenerPolicy: {
-    policy: "cross-origin"
+  
+  // Remove a configuração problemática do crossOriginOpenerPolicy
+  // e usa a configuração padrão segura do Helmet
+  crossOriginOpenerPolicy: false, // Desabilita para evitar conflitos
+  
+  // Desabilita para evitar conflitos com CORS
+  crossOriginEmbedderPolicy: false,
+  
+  // Configurações específicas para API
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"], // Para Swagger UI
+      scriptSrc: ["'self'"], 
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
   },
-  crossOriginEmbedderPolicy: false // Desabilita para evitar conflitos com CORS
+  
+  // Headers de segurança adicionais
+  hsts: {
+    maxAge: 31536000, // 1 ano
+    includeSubDomains: true,
+    preload: true
+  },
+  
+  // Previne ataques de clickjacking
+  frameguard: { action: 'deny' },
+  
+  // Previne MIME type sniffing
+  noSniff: true,
+  
+  // Força HTTPS (apenas em produção)
+  ...(process.env.NODE_ENV === 'production' && {
+    forceHTTPS: true
+  })
 }));
 
 // Aplicação da configuração CORS melhorada
@@ -181,15 +218,42 @@ app.use((error, req, res, next) => {
 // Middleware de tratamento de erros (deve ser o último)
 app.use(errorMiddleware);
 
-// Inicialização do servidor
-app.listen(PORT, () => {
+// Inicialização do servidor com tratamento de erro
+const server = app.listen(PORT, () => {
   logger.info('Server Started', {
     port: PORT,
     environment: process.env.NODE_ENV || 'development',
     allowedOrigins: require('./src/middlewares/corsMiddleware').getAllowedOrigins(),
     timestamp: new Date().toISOString()
   });
+}).on('error', (error) => {
+  logger.error('Server Start Error', {
+    error: error.message,
+    port: PORT,
+    code: error.code
+  });
+  process.exit(1);
 });
+
+// Graceful shutdown
+const gracefulShutdown = () => {
+  logger.info('Graceful shutdown initiated');
+  
+  server.close(() => {
+    logger.info('Server closed');
+    process.exit(0);
+  });
+  
+  // Force close after 30 seconds
+  setTimeout(() => {
+    logger.error('Forced shutdown');
+    process.exit(1);
+  }, 30000);
+};
+
+// Tratamento de sinais de shutdown
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 // Tratamento de erros não capturados
 process.on('uncaughtException', (error) => {
