@@ -73,8 +73,7 @@ const corsOptions = {
       'http://localhost:3001',
       'https://localhost:3000',
       'https://localhost:3001',
-      // Adicione aqui a URL do seu frontend em produção quando for fazer deploy
-      // 'https://seudominio.com'
+      'https://orbitask-frontend.vercel.app'
     ];
 
     // Permite requisições sem origin (ex: Postman, apps mobile)
